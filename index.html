@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -53,9 +52,14 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-fam
 .edot{width:5px;height:5px;border-radius:50%;margin-top:5px;flex-shrink:0;background:#4f8ef7;}
 .edot.severe{background:#f76446;}
 .example-box{background:var(--surface2);border-radius:8px;border:1px solid var(--border);padding:10px;font-size:12px;color:var(--text2);line-height:1.6;font-style:italic;}
+#loading{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:var(--bg);flex-direction:column;gap:12px;}
+#loading p{color:var(--text2);font-size:14px;}
+.spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,0.1);border-top-color:#4f8ef7;border-radius:50%;animation:spin 0.8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
 </style>
 </head>
 <body>
+<div id="loading"><div class="spinner"></div><p>Loading brain model...</p></div>
 <canvas id="three-canvas"></canvas>
 <div id="header">
   <div style="display:flex;align-items:baseline;gap:7px;">
@@ -105,7 +109,6 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-fam
     </div>
   </div>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 var lobeData={
   frontal:{name:"Frontal lobe",role:"Controls personality, decision-making, impulse control, and voluntary movement.",color:0x4f8ef7,emissive:0x1a3a80,hex:"#4f8ef7",effects:{mild:["Irritability & mood swings","Mild impulsivity","Difficulty concentrating","Mental fatigue"],moderate:["Personality changes","Poor judgment","Emotional outbursts","Difficulty planning"],severe:["Personality transformation","No impulse control","Cannot make decisions","Severe aggression","Movement paralysis"]},example:"Phineas Gage (1848) — a railroad worker whose iron rod pierced his frontal lobe. He survived but became impulsive and unreliable. His case first linked the frontal lobe to personality."},
@@ -116,289 +119,102 @@ var lobeData={
   cerebellum:{name:"Cerebellum",role:"Coordinates movement, balance, and fine motor skills.",color:0x8a7adf,emissive:0x2a1880,hex:"#8a7adf",effects:{mild:["Slight balance problems","Clumsiness with fine tasks","Physical fatigue"],moderate:["Ataxia — stumbling gait","Slurred speech","Tremors during movement"],severe:["Cannot walk unassisted","No voluntary coordination","Unintelligible speech","Difficulty swallowing"]},example:"Cerebellar damage from repeated concussions produces a distinctive wide stumbling walk. It is also the cause of coordination problems in chronic alcoholism, where the cerebellum degenerates over time."},
   brainstem:{name:"Brainstem",role:"Controls breathing, heart rate, blood pressure, sleep/wake cycles, and all signals between brain and body.",color:0xf76446,emissive:0x5a1800,hex:"#f76446",effects:{mild:["Sleep disturbances","Mild dizziness","Swallowing difficulty"],moderate:["Impaired breathing rhythm","Loss of cranial nerve function","Double vision, facial weakness"],severe:["Coma or vegetative state","Locked-in syndrome","Respiratory failure","Loss of all voluntary movement"]},example:"Jean-Dominique Bauby suffered a brainstem stroke and awoke completely paralyzed — able to move only his left eyelid. He dictated his memoir The Diving Bell and the Butterfly by blinking to select each letter."}
 };
-
-var sevLabels=[””,“Mild”,“Moderate”,“Severe”];
+var sevLabels=["","Mild","Moderate","Severe"];
 var currentLobe=null,currentSev=1,autoRotate=true,isDragging=false,prevX=0,prevY=0,dragDist=0;
-var scene,camera,renderer,brainGroup,raycaster,mouse;
-var meshMap={};
-
-// Base dark colors per lobe (unselected state)
-var baseCols={
-frontal:[0x1a3a70,0x0a1840],
-parietal:[0x1a3a28,0x0a2018],
-occipital:[0x3a1840,0x1a0820],
-temporalL:[0x3a2808,0x1a1000],
-temporalR:[0x3a2808,0x1a1000],
-cerebellum:[0x1a1840,0x0a0828],
-brainstem:[0x3a1808,0x1a0800]
-};
-
-function init(){
-var W=window.innerWidth,H=window.innerHeight;
-scene=new THREE.Scene();
-scene.background=new THREE.Color(0x060910);
-scene.fog=new THREE.FogExp2(0x060910,0.16);
-camera=new THREE.PerspectiveCamera(45,W/H,0.1,100);
-camera.position.set(0,0.2,5.8);
-renderer=new THREE.WebGLRenderer({canvas:document.getElementById(‘three-canvas’),antialias:true});
-renderer.setSize(W,H);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-// Lighting
-scene.add(new THREE.AmbientLight(0x8090cc,0.4));
-var kl=new THREE.DirectionalLight(0xffffff,1.1);kl.position.set(3,5,4);scene.add(kl);
-var fl=new THREE.DirectionalLight(0x4466cc,0.5);fl.position.set(-4,1,-2);scene.add(fl);
-var rl=new THREE.DirectionalLight(0x88aaff,0.3);rl.position.set(0,-3,2);scene.add(rl);
-raycaster=new THREE.Raycaster();
-mouse=new THREE.Vector2();
-buildBrain();
-setupEvents();
-animate();
-window.addEventListener(‘resize’,function(){
-var W=window.innerWidth,H=window.innerHeight;
-camera.aspect=W/H;camera.updateProjectionMatrix();renderer.setSize(W,H);
-});
-}
-
-// Wrinkle / sulci effect
-function wrinkle(geo,s){
-s=s||0.045;
-var p=geo.attributes.position;
-for(var i=0;i<p.count;i++){
-var x=p.getX(i),y=p.getY(i),z=p.getZ(i);
-var n=Math.sin(x*14+y*7)*Math.cos(y*11+z*9)*Math.sin(z*13+x*8);
-var n2=Math.cos(x*9)*Math.sin(y*13)*Math.cos(z*7);
-var n3=Math.sin(x*17+z*11)*Math.cos(y*15);
-var d=(n+n2*0.5+n3*0.3)*s;
-var l=Math.sqrt(x*x+y*y+z*z)||1;
-p.setXYZ(i,x+x/l*d,y+y/l*d,z+z/l*d);
-}
-geo.computeVertexNormals();
-return geo;
-}
-
-function mat(c,e){
-return new THREE.MeshStandardMaterial({color:c,emissive:e,emissiveIntensity:0.15,roughness:0.72,metalness:0.05});
-}
-
+var scene,camera,renderer,brainGroup,raycaster,mouse,meshMap={};
+var baseCols={frontal:[0x1a3a70,0x0a1840],parietal:[0x1a3a28,0x0a2018],occipital:[0x3a1840,0x1a0820],temporalL:[0x3a2808,0x1a1000],temporalR:[0x3a2808,0x1a1000],cerebellum:[0x1a1840,0x0a0828],brainstem:[0x3a1808,0x1a0800]};
+function wrinkle(geo,s){s=s||0.045;var p=geo.attributes.position;for(var i=0;i<p.count;i++){var x=p.getX(i),y=p.getY(i),z=p.getZ(i);var n=Math.sin(x*14+y*7)*Math.cos(y*11+z*9)*Math.sin(z*13+x*8);var n2=Math.cos(x*9)*Math.sin(y*13)*Math.cos(z*7);var n3=Math.sin(x*17+z*11)*Math.cos(y*15);var d=(n+n2*0.5+n3*0.3)*s;var l=Math.sqrt(x*x+y*y+z*z)||1;p.setXYZ(i,x+x/l*d,y+y/l*d,z+z/l*d);}geo.computeVertexNormals();return geo;}
+function mat(c,e){return new THREE.MeshStandardMaterial({color:c,emissive:e,emissiveIntensity:0.15,roughness:0.72,metalness:0.05});}
 function buildBrain(){
-brainGroup=new THREE.Group();
-scene.add(brainGroup);
-
-function addLobe(key,geo,px,py,pz,sx,sy,sz,rx,ry,rz){
-var g=wrinkle(geo);
-var bc=baseCols[key];
-var m=mat(bc[0],bc[1]);
-var mesh=new THREE.Mesh(g,m);
-mesh.position.set(px,py,pz);
-if(sx!==undefined) mesh.scale.set(sx,sy,sz);
-if(rx!==undefined) mesh.rotation.x=rx;
-if(ry!==undefined) mesh.rotation.y=ry;
-if(rz!==undefined) mesh.rotation.z=rz;
-mesh.userData.lobe=key;
-brainGroup.add(mesh);
-meshMap[key]=mesh;
+  brainGroup=new THREE.Group();scene.add(brainGroup);
+  function addLobe(key,geo,px,py,pz,sx,sy,sz,rx,ry,rz){var g=wrinkle(geo);var bc=baseCols[key];var m=mat(bc[0],bc[1]);var mesh=new THREE.Mesh(g,m);mesh.position.set(px,py,pz);if(sx!==undefined)mesh.scale.set(sx,sy,sz);if(rx!==undefined)mesh.rotation.x=rx;if(ry!==undefined)mesh.rotation.y=ry;if(rz!==undefined)mesh.rotation.z=rz;mesh.userData.lobe=key;brainGroup.add(mesh);meshMap[key]=mesh;}
+  addLobe('frontal',new THREE.SphereGeometry(0.76,52,36,0,Math.PI*2,0,Math.PI*0.58),0,0.20,0.22,1.08,1.02,1.08,-0.18,0,0);
+  addLobe('parietal',new THREE.SphereGeometry(0.66,52,36),0,0.44,-0.20,1.18,0.70,0.98,0,0,0);
+  addLobe('occipital',new THREE.SphereGeometry(0.53,52,36),0,0.06,-0.68,1.08,0.88,0.88,0,0,0);
+  addLobe('temporalL',new THREE.SphereGeometry(0.52,52,36),-0.65,-0.10,-0.05,0.80,0.60,1.08,0,0,0);
+  addLobe('temporalR',new THREE.SphereGeometry(0.52,52,36),0.65,-0.10,-0.05,0.80,0.60,1.08,0,0,0);
+  addLobe('cerebellum',new THREE.SphereGeometry(0.50,52,36),0,-0.38,-0.52,1.38,0.66,0.94,0,0,0);
+  var bsGeo=new THREE.CylinderGeometry(0.15,0.20,0.60,24);wrinkle(bsGeo,0.02);
+  var bsMat=new THREE.MeshStandardMaterial({color:baseCols.brainstem[0],emissive:baseCols.brainstem[1],emissiveIntensity:0.15,roughness:0.75,metalness:0.05});
+  var bsMesh=new THREE.Mesh(bsGeo,bsMat);bsMesh.position.set(0,-0.80,-0.18);bsMesh.rotation.x=0.28;bsMesh.userData.lobe='brainstem';brainGroup.add(bsMesh);meshMap['brainstem']=bsMesh;
+  var fi=new THREE.Mesh(new THREE.BoxGeometry(0.045,0.95,1.28),new THREE.MeshStandardMaterial({color:0x06090f,roughness:1,metalness:0,transparent:true,opacity:0.92}));
+  fi.position.set(0,0.28,-0.08);brainGroup.add(fi);
+  brainGroup.rotation.y=0.3;brainGroup.position.y=0.8;
 }
-
-// ── FRONTAL LOBE — large, forward, slightly wider ──────────────────────────
-// Use a sphere trimmed to a hemisphere-ish shape by using phiLength < PI
-addLobe(‘frontal’,
-new THREE.SphereGeometry(0.76,52,36,0,Math.PI*2,0,Math.PI*0.58),
-0, 0.20, 0.22,
-1.08, 1.02, 1.08,
--0.18, 0, 0
-);
-
-// ── PARIETAL LOBE — top/center, slightly behind frontal ───────────────────
-addLobe(‘parietal’,
-new THREE.SphereGeometry(0.66,52,36),
-0, 0.44, -0.20,
-1.18, 0.70, 0.98,
-0, 0, 0
-);
-
-// ── OCCIPITAL LOBE — rear, smaller ────────────────────────────────────────
-addLobe(‘occipital’,
-new THREE.SphereGeometry(0.53,52,36),
-0, 0.06, -0.68,
-1.08, 0.88, 0.88,
-0, 0, 0
-);
-
-// ── TEMPORAL LOBE LEFT — side, slightly below midline ─────────────────────
-addLobe(‘temporalL’,
-new THREE.SphereGeometry(0.52,52,36),
--0.65, -0.10, -0.05,
-0.80, 0.60, 1.08,
-0, 0, 0
-);
-
-// ── TEMPORAL LOBE RIGHT ───────────────────────────────────────────────────
-addLobe(‘temporalR’,
-new THREE.SphereGeometry(0.52,52,36),
-0.65, -0.10, -0.05,
-0.80, 0.60, 1.08,
-0, 0, 0
-);
-
-// ── CEREBELLUM — lower rear, wider than tall ──────────────────────────────
-addLobe(‘cerebellum’,
-new THREE.SphereGeometry(0.50,52,36),
-0, -0.38, -0.52,
-1.38, 0.66, 0.94,
-0, 0, 0
-);
-
-// ── BRAINSTEM — cylinder, hangs below ─────────────────────────────────────
-var bsGeo=new THREE.CylinderGeometry(0.15,0.20,0.60,24);
-wrinkle(bsGeo,0.02);
-var bsMat=new THREE.MeshStandardMaterial({color:baseCols.brainstem[0],emissive:baseCols.brainstem[1],emissiveIntensity:0.15,roughness:0.75,metalness:0.05});
-var bsMesh=new THREE.Mesh(bsGeo,bsMat);
-bsMesh.position.set(0,-0.80,-0.18);
-bsMesh.rotation.x=0.28;
-bsMesh.userData.lobe=‘brainstem’;
-brainGroup.add(bsMesh);
-meshMap[‘brainstem’]=bsMesh;
-
-// ── INTERHEMISPHERIC FISSURE (thin dark divider) ───────────────────────────
-var fi=new THREE.Mesh(
-new THREE.BoxGeometry(0.045,0.95,1.28),
-new THREE.MeshStandardMaterial({color:0x06090f,roughness:1,metalness:0,transparent:true,opacity:0.92})
-);
-fi.position.set(0,0.28,-0.08);
-brainGroup.add(fi);
-
-// Initial orientation
-brainGroup.rotation.y=0.3;
-brainGroup.position.y=0.8;
+function init(){
+  var W=window.innerWidth,H=window.innerHeight;
+  scene=new THREE.Scene();scene.background=new THREE.Color(0x060910);scene.fog=new THREE.FogExp2(0x060910,0.16);
+  camera=new THREE.PerspectiveCamera(45,W/H,0.1,100);camera.position.set(0,0.2,5.8);
+  renderer=new THREE.WebGLRenderer({canvas:document.getElementById('three-canvas'),antialias:true});
+  renderer.setSize(W,H);renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  scene.add(new THREE.AmbientLight(0x8090cc,0.4));
+  var kl=new THREE.DirectionalLight(0xffffff,1.1);kl.position.set(3,5,4);scene.add(kl);
+  var fl=new THREE.DirectionalLight(0x4466cc,0.5);fl.position.set(-4,1,-2);scene.add(fl);
+  var rl=new THREE.DirectionalLight(0x88aaff,0.3);rl.position.set(0,-3,2);scene.add(rl);
+  raycaster=new THREE.Raycaster();mouse=new THREE.Vector2();
+  buildBrain();setupEvents();
+  document.getElementById('loading').style.display='none';
+  animate();
+  window.addEventListener('resize',function(){var W=window.innerWidth,H=window.innerHeight;camera.aspect=W/H;camera.updateProjectionMatrix();renderer.setSize(W,H);});
 }
-
 function highlightLobe(key){
-Object.keys(meshMap).forEach(function(k){
-var m=meshMap[k];
-var bc=baseCols[k];
-m.material.color.setHex(bc[0]);
-m.material.emissive.setHex(bc[1]);
-m.material.emissiveIntensity=0.15;
-});
-document.querySelectorAll(’.lobe-btn’).forEach(function(b){b.classList.remove(‘active’);});
-if(!key) return;
-var ld=lobeData[key],m=meshMap[key];
-m.material.color.setHex(ld.color);
-m.material.emissive.setHex(ld.emissive);
-m.material.emissiveIntensity=0.65;
-var btn=document.querySelector(’.lobe-btn[onclick=“selectLobe('’+key+’')”]’);
-if(btn) btn.classList.add(‘active’);
+  Object.keys(meshMap).forEach(function(k){var m=meshMap[k];var bc=baseCols[k];m.material.color.setHex(bc[0]);m.material.emissive.setHex(bc[1]);m.material.emissiveIntensity=0.15;});
+  document.querySelectorAll('.lobe-btn').forEach(function(b){b.classList.remove('active');});
+  if(!key)return;
+  var ld=lobeData[key],m=meshMap[key];
+  m.material.color.setHex(ld.color);m.material.emissive.setHex(ld.emissive);m.material.emissiveIntensity=0.65;
+  var btn=document.querySelector('.lobe-btn[onclick="selectLobe(\''+key+'\')"]');
+  if(btn)btn.classList.add('active');
 }
-
 function setupEvents(){
-var canvas=renderer.domElement;
-canvas.addEventListener(‘touchstart’,function(e){
-e.preventDefault();
-var t=e.touches[0];prevX=t.clientX;prevY=t.clientY;isDragging=false;dragDist=0;
-autoRotate=false;document.getElementById(‘drag-hint’).style.opacity=‘0’;
-},{passive:false});
-canvas.addEventListener(‘touchmove’,function(e){
-e.preventDefault();if(e.touches.length!==1)return;
-var t=e.touches[0];var dx=t.clientX-prevX,dy=t.clientY-prevY;
-dragDist+=Math.abs(dx)+Math.abs(dy);if(dragDist>5)isDragging=true;
-brainGroup.rotation.y+=dx*0.008;brainGroup.rotation.x+=dy*0.008;
-brainGroup.rotation.x=Math.max(-1,Math.min(1,brainGroup.rotation.x));
-prevX=t.clientX;prevY=t.clientY;
-},{passive:false});
-canvas.addEventListener(‘touchend’,function(e){
-e.preventDefault();
-if(!isDragging){var t=e.changedTouches[0];handleTap(t.clientX,t.clientY);}
-},{passive:false});
-canvas.addEventListener(‘mousedown’,function(e){
-prevX=e.clientX;prevY=e.clientY;isDragging=false;dragDist=0;
-autoRotate=false;document.getElementById(‘drag-hint’).style.opacity=‘0’;
-});
-canvas.addEventListener(‘mousemove’,function(e){
-if(e.buttons!==1)return;
-var dx=e.clientX-prevX,dy=e.clientY-prevY;
-dragDist+=Math.abs(dx)+Math.abs(dy);if(dragDist>5)isDragging=true;
-brainGroup.rotation.y+=dx*0.008;brainGroup.rotation.x+=dy*0.008;
-brainGroup.rotation.x=Math.max(-1,Math.min(1,brainGroup.rotation.x));
-prevX=e.clientX;prevY=e.clientY;
-});
-canvas.addEventListener(‘mouseup’,function(e){if(!isDragging)handleTap(e.clientX,e.clientY);});
+  var canvas=renderer.domElement;
+  canvas.addEventListener('touchstart',function(e){e.preventDefault();var t=e.touches[0];prevX=t.clientX;prevY=t.clientY;isDragging=false;dragDist=0;autoRotate=false;document.getElementById('drag-hint').style.opacity='0';},{passive:false});
+  canvas.addEventListener('touchmove',function(e){e.preventDefault();if(e.touches.length!==1)return;var t=e.touches[0];var dx=t.clientX-prevX,dy=t.clientY-prevY;dragDist+=Math.abs(dx)+Math.abs(dy);if(dragDist>5)isDragging=true;brainGroup.rotation.y+=dx*0.008;brainGroup.rotation.x+=dy*0.008;brainGroup.rotation.x=Math.max(-1,Math.min(1,brainGroup.rotation.x));prevX=t.clientX;prevY=t.clientY;},{passive:false});
+  canvas.addEventListener('touchend',function(e){e.preventDefault();if(!isDragging){var t=e.changedTouches[0];handleTap(t.clientX,t.clientY);}},{passive:false});
+  canvas.addEventListener('mousedown',function(e){prevX=e.clientX;prevY=e.clientY;isDragging=false;dragDist=0;autoRotate=false;document.getElementById('drag-hint').style.opacity='0';});
+  canvas.addEventListener('mousemove',function(e){if(e.buttons!==1)return;var dx=e.clientX-prevX,dy=e.clientY-prevY;dragDist+=Math.abs(dx)+Math.abs(dy);if(dragDist>5)isDragging=true;brainGroup.rotation.y+=dx*0.008;brainGroup.rotation.x+=dy*0.008;brainGroup.rotation.x=Math.max(-1,Math.min(1,brainGroup.rotation.x));prevX=e.clientX;prevY=e.clientY;});
+  canvas.addEventListener('mouseup',function(e){if(!isDragging)handleTap(e.clientX,e.clientY);});
 }
-
 function handleTap(cx,cy){
-mouse.x=(cx/window.innerWidth)*2-1;
-mouse.y=-(cy/window.innerHeight)*2+1;
-raycaster.setFromCamera(mouse,camera);
-var hits=raycaster.intersectObjects(Object.keys(meshMap).map(function(k){return meshMap[k];}));
-if(hits.length>0){
-var key=hits[0].object.userData.lobe;
-selectLobe(key);
-var lbl=document.getElementById(‘lobe-label’);
-lbl.style.left=cx+‘px’;lbl.style.top=cy+‘px’;
-lbl.textContent=lobeData[key].name;
-lbl.style.display=‘block’;lbl.style.opacity=‘1’;
-setTimeout(function(){lbl.style.opacity=‘0’;setTimeout(function(){lbl.style.display=‘none’;},350);},1100);
+  mouse.x=(cx/window.innerWidth)*2-1;mouse.y=-(cy/window.innerHeight)*2+1;
+  raycaster.setFromCamera(mouse,camera);
+  var hits=raycaster.intersectObjects(Object.keys(meshMap).map(function(k){return meshMap[k];}));
+  if(hits.length>0){var key=hits[0].object.userData.lobe;selectLobe(key);var lbl=document.getElementById('lobe-label');lbl.style.left=cx+'px';lbl.style.top=cy+'px';lbl.textContent=lobeData[key].name;lbl.style.display='block';lbl.style.opacity='1';setTimeout(function(){lbl.style.opacity='0';setTimeout(function(){lbl.style.display='none';},350);},1100);}
 }
-}
-
 function selectLobe(key){
-currentLobe=key;highlightLobe(key);
-var ld=lobeData[key];
-document.getElementById(‘info-dot’).style.background=ld.hex;
-document.getElementById(‘info-name’).textContent=ld.name;
-document.getElementById(‘info-role’).textContent=ld.role;
-document.getElementById(‘info-example’).textContent=ld.example;
-document.getElementById(‘severity’).value=currentSev;
-renderEffects();
-document.getElementById(‘drawer’).classList.add(‘open’);
+  currentLobe=key;highlightLobe(key);
+  var ld=lobeData[key];
+  document.getElementById('info-dot').style.background=ld.hex;
+  document.getElementById('info-name').textContent=ld.name;
+  document.getElementById('info-role').textContent=ld.role;
+  document.getElementById('info-example').textContent=ld.example;
+  document.getElementById('severity').value=currentSev;
+  renderEffects();
+  document.getElementById('drawer').classList.add('open');
 }
-
-function closeDrawer(){document.getElementById(‘drawer’).classList.remove(‘open’);}
-
+function closeDrawer(){document.getElementById('drawer').classList.remove('open');}
 function renderEffects(){
-if(!currentLobe)return;
-var ld=lobeData[currentLobe];
-var k=[’’,‘mild’,‘moderate’,‘severe’][currentSev];
-var effects=ld.effects[k];
-var isSev=currentSev===3;
-document.getElementById(‘sev-heading’).textContent=sevLabels[currentSev]+’ - behavioral changes’;
-document.getElementById(‘effects-list’).innerHTML=effects.map(function(e){
-return’<div class="effect-item'+(isSev?' severe':'')+'"><div class="edot'+(isSev?' severe':'')+'"></div><span>’+e+’</span></div>’;
-}).join(’’);
+  if(!currentLobe)return;
+  var ld=lobeData[currentLobe];var k=['','mild','moderate','severe'][currentSev];var effects=ld.effects[k];var isSev=currentSev===3;
+  document.getElementById('sev-heading').textContent=sevLabels[currentSev]+' - behavioral changes';
+  document.getElementById('effects-list').innerHTML=effects.map(function(e){return'<div class="effect-item'+(isSev?' severe':'')+'"><div class="edot'+(isSev?' severe':'')+'"></div><span>'+e+'</span></div>';}).join('');
 }
-
-function updateSeverity(v){
-currentSev=parseInt(v);
-document.getElementById(‘sev-label’).textContent=sevLabels[currentSev];
-renderEffects();
-}
-
+function updateSeverity(v){currentSev=parseInt(v);document.getElementById('sev-label').textContent=sevLabels[currentSev];renderEffects();}
 function resetAll(){
-currentLobe=null;highlightLobe(null);closeDrawer();
-document.getElementById(‘severity’).value=1;currentSev=1;
-document.getElementById(‘sev-label’).textContent=‘Mild’;
-autoRotate=true;
-brainGroup.rotation.set(0,0.3,0);
-brainGroup.position.y=0.8;
-document.getElementById(‘drag-hint’).style.opacity=‘1’;
+  currentLobe=null;highlightLobe(null);closeDrawer();
+  document.getElementById('severity').value=1;currentSev=1;
+  document.getElementById('sev-label').textContent='Mild';
+  autoRotate=true;brainGroup.rotation.set(0,0.3,0);brainGroup.position.y=0.8;
+  document.getElementById('drag-hint').style.opacity='1';
 }
-
-function randomLobe(){
-var keys=Object.keys(lobeData);
-selectLobe(keys[Math.floor(Math.random()*keys.length)]);
-}
-
+function randomLobe(){var keys=Object.keys(lobeData);selectLobe(keys[Math.floor(Math.random()*keys.length)]);}
 var t=0;
-function animate(){
-requestAnimationFrame(animate);t+=0.005;
-if(autoRotate){
-brainGroup.rotation.y+=0.003;
-brainGroup.position.y=Math.sin(t)*0.022+0.8;
-}
-renderer.render(scene,camera);
-}
-
-init();
+function animate(){requestAnimationFrame(animate);t+=0.005;if(autoRotate){brainGroup.rotation.y+=0.003;brainGroup.position.y=Math.sin(t)*0.022+0.8;}renderer.render(scene,camera);}
+var script=document.createElement('script');
+script.src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+script.onload=function(){init();};
+script.onerror=function(){document.getElementById('loading').innerHTML='<p style="color:#f76446;padding:20px;">Failed to load. Please check internet and refresh.</p>';};
+document.head.appendChild(script);
 </script>
-
 </body>
 </html>
