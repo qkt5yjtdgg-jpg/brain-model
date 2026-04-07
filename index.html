@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Brain Injury"/>
+<title>Brain Injury — 3D Interactive</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+:root{--bg:#060910;--surface:rgba(8,13,24,0.97);--surface2:#111a28;--border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.15);--text:#e8f0ff;--text2:#7a8aaa;--text3:#3a4a6a;}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;overflow:hidden;touch-action:none;}
+#three-canvas{position:fixed;inset:0;width:100%;height:100%;display:block;}
+#header{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:50px;background:linear-gradient(to bottom,rgba(6,9,16,0.95),transparent);pointer-events:none;}
+#header>*{pointer-events:auto;}
+#header h1{font-size:18px;font-weight:600;letter-spacing:-0.01em;}
+.subtitle{font-size:11px;color:var(--text2);margin-left:8px;}
+#reset-btn{background:rgba(13,21,32,0.88);border:1px solid var(--border2);color:var(--text2);font-size:12px;padding:7px 14px;border-radius:8px;cursor:pointer;font-family:inherit;}
+#reset-btn:active{opacity:0.6;}
+#lobe-buttons{position:fixed;bottom:66px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:7px;flex-wrap:wrap;justify-content:center;padding:0 12px;}
+.lobe-btn{background:rgba(10,16,28,0.88);border:1px solid var(--border2);color:var(--text2);font-size:12px;padding:7px 13px;border-radius:20px;cursor:pointer;font-family:inherit;white-space:nowrap;}
+.lobe-btn.active{color:#fff;border-color:rgba(255,255,255,0.45);background:rgba(35,55,105,0.95);}
+.lobe-btn:active{opacity:0.7;}
+#drag-hint{position:fixed;bottom:128px;left:50%;transform:translateX(-50%);z-index:10;font-size:12px;color:var(--text3);pointer-events:none;transition:opacity 1s;white-space:nowrap;}
+#footer{position:fixed;bottom:0;left:0;right:0;z-index:10;display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:linear-gradient(to top,rgba(6,9,16,0.95),transparent);pointer-events:none;}
+#footer>*{pointer-events:auto;}
+.credit{font-size:11px;color:var(--text3);}
+#random-btn{background:#4f8ef7;border:none;color:#fff;font-size:13px;font-weight:500;padding:9px 18px;border-radius:8px;cursor:pointer;font-family:inherit;}
+#random-btn:active{opacity:0.8;}
+#lobe-label{position:fixed;pointer-events:none;display:none;z-index:20;background:rgba(8,13,24,0.95);border:1px solid rgba(255,255,255,0.18);border-radius:8px;padding:5px 13px;font-size:12px;color:#e8f0ff;white-space:nowrap;transform:translate(-50%,-130%);transition:opacity 0.3s;}
+#drawer{position:fixed;bottom:0;left:0;right:0;z-index:30;background:var(--surface);border-top:1px solid var(--border2);border-radius:18px 18px 0 0;transform:translateY(100%);transition:transform 0.38s cubic-bezier(0.32,0.72,0,1);height:42vh;max-height:320px;min-height:180px;display:flex;flex-direction:column;}
+#drawer.open{transform:translateY(0);}
+#drawer-handle{width:32px;height:4px;background:rgba(255,255,255,0.18);border-radius:2px;margin:10px auto 0;flex-shrink:0;cursor:pointer;}
+#drawer-top{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 8px;flex-shrink:0;border-bottom:1px solid var(--border);}
+.lobe-header-row{display:flex;align-items:center;gap:9px;}
+.lobe-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+.lobe-title{font-size:16px;font-weight:600;letter-spacing:-0.01em;}
+#close-btn{background:rgba(255,255,255,0.07);border:none;color:var(--text2);width:26px;height:26px;border-radius:50%;font-size:16px;line-height:26px;text-align:center;cursor:pointer;font-family:inherit;}
+#close-btn:active{background:rgba(255,255,255,0.14);}
+#drawer-body{overflow-y:scroll;-webkit-overflow-scrolling:touch;padding:10px 16px 20px;display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;}
+.lobe-role{font-size:12px;color:var(--text2);line-height:1.55;}
+.sev-row{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface2);border-radius:9px;border:1px solid var(--border);flex-shrink:0;}
+.sev-row label{font-size:11px;color:var(--text2);white-space:nowrap;min-width:48px;}
+.sev-row input[type=range]{flex:1;-webkit-appearance:none;height:3px;border-radius:2px;outline:none;border:none;background:linear-gradient(to right,#4f8ef7,#f76446);}
+.sev-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.5);cursor:pointer;}
+#sev-label{font-size:11px;font-weight:500;min-width:52px;text-align:right;color:var(--text);}
+.section-label{font-size:10px;font-weight:600;letter-spacing:0.08em;color:var(--text3);text-transform:uppercase;margin-bottom:5px;}
+#effects-list{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+.effect-item{display:flex;align-items:flex-start;gap:7px;padding:8px 10px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);font-size:12px;line-height:1.45;color:var(--text);}
+.effect-item.severe{border-color:rgba(247,100,70,0.3);background:rgba(247,100,70,0.07);}
+.edot{width:5px;height:5px;border-radius:50%;margin-top:5px;flex-shrink:0;background:#4f8ef7;}
+.edot.severe{background:#f76446;}
+.example-box{background:var(--surface2);border-radius:8px;border:1px solid var(--border);padding:10px;font-size:12px;color:var(--text2);line-height:1.6;font-style:italic;}
+</style>
+</head>
+<body>
+<canvas id="three-canvas"></canvas>
+<div id="header">
+  <div style="display:flex;align-items:baseline;gap:7px;">
+    <h1>Brain Injury &amp; Behavior</h1>
+    <span class="subtitle">Drag to rotate &middot; Tap a lobe</span>
+  </div>
+  <button id="reset-btn" onclick="resetAll()">&#8635; Reset</button>
+</div>
+<div id="drag-hint">Drag to rotate the brain</div>
+<div id="lobe-buttons">
+  <button class="lobe-btn" onclick="selectLobe('frontal')">Frontal</button>
+  <button class="lobe-btn" onclick="selectLobe('parietal')">Parietal</button>
+  <button class="lobe-btn" onclick="selectLobe('occipital')">Occipital</button>
+  <button class="lobe-btn" onclick="selectLobe('temporalL')">Temporal L</button>
+  <button class="lobe-btn" onclick="selectLobe('temporalR')">Temporal R</button>
+  <button class="lobe-btn" onclick="selectLobe('cerebellum')">Cerebellum</button>
+  <button class="lobe-btn" onclick="selectLobe('brainstem')">Brainstem</button>
+</div>
+<div id="lobe-label"></div>
+<div id="footer">
+  <span class="credit">Brain Injury Science Fair Project</span>
+  <button id="random-btn" onclick="randomLobe()">Random impact &rarr;</button>
+</div>
+<div id="drawer">
+  <div id="drawer-handle" onclick="closeDrawer()"></div>
+  <div id="drawer-top">
+    <div class="lobe-header-row">
+      <div class="lobe-dot" id="info-dot"></div>
+      <div class="lobe-title" id="info-name"></div>
+    </div>
+    <button id="close-btn" onclick="closeDrawer()">&#215;</button>
+  </div>
+  <div id="drawer-body">
+    <div class="lobe-role" id="info-role"></div>
+    <div class="sev-row">
+      <label>Severity</label>
+      <input type="range" id="severity" min="1" max="3" value="1" step="1" oninput="updateSeverity(this.value)"/>
+      <span id="sev-label">Mild</span>
+    </div>
+    <div>
+      <div class="section-label" id="sev-heading">Mild - behavioral changes</div>
+      <div id="effects-list"></div>
+    </div>
+    <div>
+      <div class="section-label">Real-world example</div>
+      <div class="example-box" id="info-example"></div>
+    </div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+var lobeData={
+  frontal:{name:"Frontal lobe",role:"Controls personality, decision-making, impulse control, and voluntary movement.",color:0x4f8ef7,emissive:0x1a3a80,hex:"#4f8ef7",effects:{mild:["Irritability & mood swings","Mild impulsivity","Difficulty concentrating","Mental fatigue"],moderate:["Personality changes","Poor judgment","Emotional outbursts","Difficulty planning"],severe:["Personality transformation","No impulse control","Cannot make decisions","Severe aggression","Movement paralysis"]},example:"Phineas Gage (1848) — a railroad worker whose iron rod pierced his frontal lobe. He survived but became impulsive and unreliable. His case first linked the frontal lobe to personality."},
+  parietal:{name:"Parietal lobe",role:"Processes touch, temperature, pain, and spatial awareness.",color:0x4fc48a,emissive:0x0a4a28,hex:"#4fc48a",effects:{mild:["Mild clumsiness","Difficulty with spatial tasks","Sensory confusion"],moderate:["Trouble reading & writing","Difficulty with math","Confused body position","Sensory loss in limbs"],severe:["Hemispatial neglect","Cannot ID objects by touch","Severe disorientation","Cannot dress independently"]},example:"Hemispatial neglect — patients eat only food on one side of their plate, shave only one side of their face, or draw a clock with all numbers crammed to one side."},
+  occipital:{name:"Occipital lobe",role:"Processes all visual information — color, depth, and object recognition.",color:0xc06abf,emissive:0x50185a,hex:"#c06abf",effects:{mild:["Visual disturbances","Difficulty in low light","Mild depth perception issues"],moderate:["Loss of peripheral vision","Trouble recognizing faces","Color perception changes"],severe:["Cortical blindness","Visual hallucinations","Anton's syndrome — blind but believes they can see"]},example:"Anton's syndrome — patients are completely blind due to occipital damage yet confabulate vivid descriptions of things they claim to see. The brain fills in vision that no longer exists."},
+  temporalL:{name:"Temporal lobe — left",role:"Dominant for language, verbal memory, and auditory processing.",color:0xe0a030,emissive:0x5a3800,hex:"#e0a030",effects:{mild:["Word-finding difficulty","Mild memory lapses","Difficulty following speech"],moderate:["Aphasia — language trouble","Short-term memory loss","Difficulty learning new info"],severe:["Complete language loss","Cannot recall any words","Cannot understand speech","Severe memory disruption"]},example:"Wernicke's aphasia — patients speak fluently but use wrong or made-up words. They cannot understand others yet seem unaware their own speech is nonsensical."},
+  temporalR:{name:"Temporal lobe — right",role:"Processes music, facial recognition, and emotional tone in speech.",color:0xe08030,emissive:0x5a2800,hex:"#e08030",effects:{mild:["Difficulty reading tone","Trouble recognizing faces","Music sounds off"],moderate:["Prosopagnosia — cannot recognize faces","Difficulty reading social cues","Visual memory impaired"],severe:["Cannot recognize family members","Severe social behavior changes","Cannot interpret any expression"]},example:"Oliver Sacks described a patient who mistook his wife's head for a hat — a classic case of right temporal damage causing prosopagnosia and loss of object recognition."},
+  cerebellum:{name:"Cerebellum",role:"Coordinates movement, balance, and fine motor skills.",color:0x8a7adf,emissive:0x2a1880,hex:"#8a7adf",effects:{mild:["Slight balance problems","Clumsiness with fine tasks","Physical fatigue"],moderate:["Ataxia — stumbling gait","Slurred speech","Tremors during movement"],severe:["Cannot walk unassisted","No voluntary coordination","Unintelligible speech","Difficulty swallowing"]},example:"Cerebellar damage from repeated concussions produces a distinctive wide stumbling walk. It is also the cause of coordination problems in chronic alcoholism, where the cerebellum degenerates over time."},
+  brainstem:{name:"Brainstem",role:"Controls breathing, heart rate, blood pressure, sleep/wake cycles, and all signals between brain and body.",color:0xf76446,emissive:0x5a1800,hex:"#f76446",effects:{mild:["Sleep disturbances","Mild dizziness","Swallowing difficulty"],moderate:["Impaired breathing rhythm","Loss of cranial nerve function","Double vision, facial weakness"],severe:["Coma or vegetative state","Locked-in syndrome","Respiratory failure","Loss of all voluntary movement"]},example:"Jean-Dominique Bauby suffered a brainstem stroke and awoke completely paralyzed — able to move only his left eyelid. He dictated his memoir The Diving Bell and the Butterfly by blinking to select each letter."}
+};
+
+var sevLabels=[””,“Mild”,“Moderate”,“Severe”];
+var currentLobe=null,currentSev=1,autoRotate=true,isDragging=false,prevX=0,prevY=0,dragDist=0;
+var scene,camera,renderer,brainGroup,raycaster,mouse;
+var meshMap={};
+
+// Base dark colors per lobe (unselected state)
+var baseCols={
+frontal:[0x1a3a70,0x0a1840],
+parietal:[0x1a3a28,0x0a2018],
+occipital:[0x3a1840,0x1a0820],
+temporalL:[0x3a2808,0x1a1000],
+temporalR:[0x3a2808,0x1a1000],
+cerebellum:[0x1a1840,0x0a0828],
+brainstem:[0x3a1808,0x1a0800]
+};
+
+function init(){
+var W=window.innerWidth,H=window.innerHeight;
+scene=new THREE.Scene();
+scene.background=new THREE.Color(0x060910);
+scene.fog=new THREE.FogExp2(0x060910,0.16);
+camera=new THREE.PerspectiveCamera(45,W/H,0.1,100);
+camera.position.set(0,0.2,5.8);
+renderer=new THREE.WebGLRenderer({canvas:document.getElementById(‘three-canvas’),antialias:true});
+renderer.setSize(W,H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+// Lighting
+scene.add(new THREE.AmbientLight(0x8090cc,0.4));
+var kl=new THREE.DirectionalLight(0xffffff,1.1);kl.position.set(3,5,4);scene.add(kl);
+var fl=new THREE.DirectionalLight(0x4466cc,0.5);fl.position.set(-4,1,-2);scene.add(fl);
+var rl=new THREE.DirectionalLight(0x88aaff,0.3);rl.position.set(0,-3,2);scene.add(rl);
+raycaster=new THREE.Raycaster();
+mouse=new THREE.Vector2();
+buildBrain();
+setupEvents();
+animate();
+window.addEventListener(‘resize’,function(){
+var W=window.innerWidth,H=window.innerHeight;
+camera.aspect=W/H;camera.updateProjectionMatrix();renderer.setSize(W,H);
+});
+}
+
+// Wrinkle / sulci effect
+function wrinkle(geo,s){
+s=s||0.045;
+var p=geo.attributes.position;
+for(var i=0;i<p.count;i++){
+var x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+var n=Math.sin(x*14+y*7)*Math.cos(y*11+z*9)*Math.sin(z*13+x*8);
+var n2=Math.cos(x*9)*Math.sin(y*13)*Math.cos(z*7);
+var n3=Math.sin(x*17+z*11)*Math.cos(y*15);
+var d=(n+n2*0.5+n3*0.3)*s;
+var l=Math.sqrt(x*x+y*y+z*z)||1;
+p.setXYZ(i,x+x/l*d,y+y/l*d,z+z/l*d);
+}
+geo.computeVertexNormals();
+return geo;
+}
+
+function mat(c,e){
+return new THREE.MeshStandardMaterial({color:c,emissive:e,emissiveIntensity:0.15,roughness:0.72,metalness:0.05});
+}
+
+function buildBrain(){
+brainGroup=new THREE.Group();
+scene.add(brainGroup);
+
+function addLobe(key,geo,px,py,pz,sx,sy,sz,rx,ry,rz){
+var g=wrinkle(geo);
+var bc=baseCols[key];
+var m=mat(bc[0],bc[1]);
+var mesh=new THREE.Mesh(g,m);
+mesh.position.set(px,py,pz);
+if(sx!==undefined) mesh.scale.set(sx,sy,sz);
+if(rx!==undefined) mesh.rotation.x=rx;
+if(ry!==undefined) mesh.rotation.y=ry;
+if(rz!==undefined) mesh.rotation.z=rz;
+mesh.userData.lobe=key;
+brainGroup.add(mesh);
+meshMap[key]=mesh;
+}
+
+// ── FRONTAL LOBE — large, forward, slightly wider ──────────────────────────
+// Use a sphere trimmed to a hemisphere-ish shape by using phiLength < PI
+addLobe(‘frontal’,
+new THREE.SphereGeometry(0.76,52,36,0,Math.PI*2,0,Math.PI*0.58),
+0, 0.20, 0.22,
+1.08, 1.02, 1.08,
+-0.18, 0, 0
+);
+
+// ── PARIETAL LOBE — top/center, slightly behind frontal ───────────────────
+addLobe(‘parietal’,
+new THREE.SphereGeometry(0.66,52,36),
+0, 0.44, -0.20,
+1.18, 0.70, 0.98,
+0, 0, 0
+);
+
+// ── OCCIPITAL LOBE — rear, smaller ────────────────────────────────────────
+addLobe(‘occipital’,
+new THREE.SphereGeometry(0.53,52,36),
+0, 0.06, -0.68,
+1.08, 0.88, 0.88,
+0, 0, 0
+);
+
+// ── TEMPORAL LOBE LEFT — side, slightly below midline ─────────────────────
+addLobe(‘temporalL’,
+new THREE.SphereGeometry(0.52,52,36),
+-0.65, -0.10, -0.05,
+0.80, 0.60, 1.08,
+0, 0, 0
+);
+
+// ── TEMPORAL LOBE RIGHT ───────────────────────────────────────────────────
+addLobe(‘temporalR’,
+new THREE.SphereGeometry(0.52,52,36),
+0.65, -0.10, -0.05,
+0.80, 0.60, 1.08,
+0, 0, 0
+);
+
+// ── CEREBELLUM — lower rear, wider than tall ──────────────────────────────
+addLobe(‘cerebellum’,
+new THREE.SphereGeometry(0.50,52,36),
+0, -0.38, -0.52,
+1.38, 0.66, 0.94,
+0, 0, 0
+);
+
+// ── BRAINSTEM — cylinder, hangs below ─────────────────────────────────────
+var bsGeo=new THREE.CylinderGeometry(0.15,0.20,0.60,24);
+wrinkle(bsGeo,0.02);
+var bsMat=new THREE.MeshStandardMaterial({color:baseCols.brainstem[0],emissive:baseCols.brainstem[1],emissiveIntensity:0.15,roughness:0.75,metalness:0.05});
+var bsMesh=new THREE.Mesh(bsGeo,bsMat);
+bsMesh.position.set(0,-0.80,-0.18);
+bsMesh.rotation.x=0.28;
+bsMesh.userData.lobe=‘brainstem’;
+brainGroup.add(bsMesh);
+meshMap[‘brainstem’]=bsMesh;
+
+// ── INTERHEMISPHERIC FISSURE (thin dark divider) ───────────────────────────
+var fi=new THREE.Mesh(
+new THREE.BoxGeometry(0.045,0.95,1.28),
+new THREE.MeshStandardMaterial({color:0x06090f,roughness:1,metalness:0,transparent:true,opacity:0.92})
+);
+fi.position.set(0,0.28,-0.08);
+brainGroup.add(fi);
+
+// Initial orientation
+brainGroup.rotation.y=0.3;
+brainGroup.position.y=0.8;
+}
+
+function highlightLobe(key){
+Object.keys(meshMap).forEach(function(k){
+var m=meshMap[k];
+var bc=baseCols[k];
+m.material.color.setHex(bc[0]);
+m.material.emissive.setHex(bc[1]);
+m.material.emissiveIntensity=0.15;
+});
+document.querySelectorAll(’.lobe-btn’).forEach(function(b){b.classList.remove(‘active’);});
+if(!key) return;
+var ld=lobeData[key],m=meshMap[key];
+m.material.color.setHex(ld.color);
+m.material.emissive.setHex(ld.emissive);
+m.material.emissiveIntensity=0.65;
+var btn=document.querySelector(’.lobe-btn[onclick=“selectLobe('’+key+’')”]’);
+if(btn) btn.classList.add(‘active’);
+}
+
+function setupEvents(){
+var canvas=renderer.domElement;
+canvas.addEventListener(‘touchstart’,function(e){
+e.preventDefault();
+var t=e.touches[0];prevX=t.clientX;prevY=t.clientY;isDragging=false;dragDist=0;
+autoRotate=false;document.getElementById(‘drag-hint’).style.opacity=‘0’;
+},{passive:false});
+canvas.addEventListener(‘touchmove’,function(e){
+e.preventDefault();if(e.touches.length!==1)return;
+var t=e.touches[0];var dx=t.clientX-prevX,dy=t.clientY-prevY;
+dragDist+=Math.abs(dx)+Math.abs(dy);if(dragDist>5)isDragging=true;
+brainGroup.rotation.y+=dx*0.008;brainGroup.rotation.x+=dy*0.008;
+brainGroup.rotation.x=Math.max(-1,Math.min(1,brainGroup.rotation.x));
+prevX=t.clientX;prevY=t.clientY;
+},{passive:false});
+canvas.addEventListener(‘touchend’,function(e){
+e.preventDefault();
+if(!isDragging){var t=e.changedTouches[0];handleTap(t.clientX,t.clientY);}
+},{passive:false});
+canvas.addEventListener(‘mousedown’,function(e){
+prevX=e.clientX;prevY=e.clientY;isDragging=false;dragDist=0;
+autoRotate=false;document.getElementById(‘drag-hint’).style.opacity=‘0’;
+});
+canvas.addEventListener(‘mousemove’,function(e){
+if(e.buttons!==1)return;
+var dx=e.clientX-prevX,dy=e.clientY-prevY;
+dragDist+=Math.abs(dx)+Math.abs(dy);if(dragDist>5)isDragging=true;
+brainGroup.rotation.y+=dx*0.008;brainGroup.rotation.x+=dy*0.008;
+brainGroup.rotation.x=Math.max(-1,Math.min(1,brainGroup.rotation.x));
+prevX=e.clientX;prevY=e.clientY;
+});
+canvas.addEventListener(‘mouseup’,function(e){if(!isDragging)handleTap(e.clientX,e.clientY);});
+}
+
+function handleTap(cx,cy){
+mouse.x=(cx/window.innerWidth)*2-1;
+mouse.y=-(cy/window.innerHeight)*2+1;
+raycaster.setFromCamera(mouse,camera);
+var hits=raycaster.intersectObjects(Object.keys(meshMap).map(function(k){return meshMap[k];}));
+if(hits.length>0){
+var key=hits[0].object.userData.lobe;
+selectLobe(key);
+var lbl=document.getElementById(‘lobe-label’);
+lbl.style.left=cx+‘px’;lbl.style.top=cy+‘px’;
+lbl.textContent=lobeData[key].name;
+lbl.style.display=‘block’;lbl.style.opacity=‘1’;
+setTimeout(function(){lbl.style.opacity=‘0’;setTimeout(function(){lbl.style.display=‘none’;},350);},1100);
+}
+}
+
+function selectLobe(key){
+currentLobe=key;highlightLobe(key);
+var ld=lobeData[key];
+document.getElementById(‘info-dot’).style.background=ld.hex;
+document.getElementById(‘info-name’).textContent=ld.name;
+document.getElementById(‘info-role’).textContent=ld.role;
+document.getElementById(‘info-example’).textContent=ld.example;
+document.getElementById(‘severity’).value=currentSev;
+renderEffects();
+document.getElementById(‘drawer’).classList.add(‘open’);
+}
+
+function closeDrawer(){document.getElementById(‘drawer’).classList.remove(‘open’);}
+
+function renderEffects(){
+if(!currentLobe)return;
+var ld=lobeData[currentLobe];
+var k=[’’,‘mild’,‘moderate’,‘severe’][currentSev];
+var effects=ld.effects[k];
+var isSev=currentSev===3;
+document.getElementById(‘sev-heading’).textContent=sevLabels[currentSev]+’ - behavioral changes’;
+document.getElementById(‘effects-list’).innerHTML=effects.map(function(e){
+return’<div class="effect-item'+(isSev?' severe':'')+'"><div class="edot'+(isSev?' severe':'')+'"></div><span>’+e+’</span></div>’;
+}).join(’’);
+}
+
+function updateSeverity(v){
+currentSev=parseInt(v);
+document.getElementById(‘sev-label’).textContent=sevLabels[currentSev];
+renderEffects();
+}
+
+function resetAll(){
+currentLobe=null;highlightLobe(null);closeDrawer();
+document.getElementById(‘severity’).value=1;currentSev=1;
+document.getElementById(‘sev-label’).textContent=‘Mild’;
+autoRotate=true;
+brainGroup.rotation.set(0,0.3,0);
+brainGroup.position.y=0.8;
+document.getElementById(‘drag-hint’).style.opacity=‘1’;
+}
+
+function randomLobe(){
+var keys=Object.keys(lobeData);
+selectLobe(keys[Math.floor(Math.random()*keys.length)]);
+}
+
+var t=0;
+function animate(){
+requestAnimationFrame(animate);t+=0.005;
+if(autoRotate){
+brainGroup.rotation.y+=0.003;
+brainGroup.position.y=Math.sin(t)*0.022+0.8;
+}
+renderer.render(scene,camera);
+}
+
+init();
+</script>
+
+</body>
+</html>
